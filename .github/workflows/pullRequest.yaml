@@ -80,6 +80,11 @@ jobs:
           # terraform_trivy hook already does.
           TRIVY_TF_EXCLUDE_DOWNLOADED_MODULES: "true"
         with:
+          # Trivy 0.70 (this action version's default) does not apply inline
+          # trivy:ignore comments to findings surfaced through module calls,
+          # and the examples instantiate this module; 0.72+ applies them
+          # correctly.
+          version: v0.72.0
           scan-type: config
           hide-progress: false
           format: table
