@@ -1,0 +1,114 @@
+---
+name: pull request
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Install prerequisites
+        run: ./bin/install-ubuntu.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: initialize Terraform
+        run: terraform init --backend=false
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: pre-commit
+        # Run pre-commit directly rather than via pre-commit/action, whose
+        # nested actions/cache@v4 is rejected by the org SHA-pin ruleset.
+        run: pre-commit run --all-files --show-diff-on-failure
+        env:
+          # covered by the dedicated reviewdog jobs below
+          SKIP: >-
+            no-commit-to-branch,
+            terraform_tflint_nocreds
+
+  terraform-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Install prerequisites
+        run: ./bin/install-ubuntu.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Flat root module: a single plan-only suite backed by mock_provider.
+      - name: terraform test (root module)
+        run: |
+          terraform init --backend=false
+          terraform test
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Install prerequisites
+        run: ./bin/install-ubuntu.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Terraform init
+        run: terraform init --backend=false
+      - name: tflint
+        uses: reviewdog/action-tflint@54a5e5aed57dcfbb4662ec548de876df33d6288d # v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          filter_mode: added
+          flags: --module
+          level: error
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Misconfigurations in downloaded third-party modules are out of our
+          # control; scan first-party config only, as the pre-commit
+          # terraform_trivy hook already does.
+          TRIVY_TF_EXCLUDE_DOWNLOADED_MODULES: "true"
+        with:
+          scan-type: config
+          hide-progress: false
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          skip-dirs: '**/.terraform'
+
+  misspell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: misspell
+        uses: reviewdog/action-misspell@d6429416b12b09b4e2768307d53bef58d172e962 # v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          locale: US
+          reporter: github-pr-check
+          filter_mode: added
+          level: error
+
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: yamllint
+        uses: reviewdog/action-yamllint@b5f7217d8c815ae374d1d55840d5e569d82f01f0 # v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          filter_mode: added
+          level: error
