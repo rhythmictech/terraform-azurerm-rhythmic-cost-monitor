@@ -1,0 +1,6 @@
+# Installed remotely at deploy time via Oryx build (SCM_DO_BUILD_DURING_DEPLOYMENT).
+azure-functions
+azure-identity
+azure-mgmt-reservations
+azure-mgmt-billingbenefits
+requests
