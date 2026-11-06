@@ -74,6 +74,32 @@ run "monitor_enabled_by_default" {
 }
 
 # Disabling the monitor removes the Function, plan, and backing storage entirely.
+# The Function App name is a global DNS label, so a caller can override it when
+# the name_prefix default is already taken; the service plan name stays as is.
+run "function_name_override" {
+  command = plan
+
+  variables {
+    action_group_id                     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rhythmic-monitoring/providers/microsoft.insights/actionGroups/rhythmic-costalerts"
+    resource_group_name                 = "rhythmic-monitoring"
+    location                            = "eastus"
+    billing_period_start_date           = "2026-08-01T00:00:00Z"
+    anomaly_notification_emails         = ["anomaly@example.com"]
+    datadog_api_key                     = "example-key"
+    expiring_reservations_function_name = "client-expiring-reservations"
+  }
+
+  assert {
+    condition     = azurerm_linux_function_app.expiring_reservations[0].name == "client-expiring-reservations"
+    error_message = "the Function App should take expiring_reservations_function_name when it is set"
+  }
+
+  assert {
+    condition     = azurerm_service_plan.expiring_reservations[0].name == "rhythmic-expiring-reservations"
+    error_message = "the service plan name should stay name_prefix + expiring-reservations"
+  }
+}
+
 run "monitor_disabled" {
   command = plan
 

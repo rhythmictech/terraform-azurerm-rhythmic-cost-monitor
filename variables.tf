@@ -91,6 +91,17 @@ variable "enable_expiring_reservations_monitor" {
   default     = true
 }
 
+variable "expiring_reservations_function_name" {
+  description = "Name of the expiring-reservations Function App. Function App names are global DNS labels (<name>.azurewebsites.net), so the default of name_prefix + expiring-reservations can exist only once across all of Azure; set this when the default is already taken. Null means the default."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.expiring_reservations_function_name == null || can(regex("^[a-z0-9]([a-z0-9-]{0,58}[a-z0-9])?$", var.expiring_reservations_function_name))
+    error_message = "expiring_reservations_function_name must be 2-60 lowercase alphanumerics or hyphens, starting and ending with an alphanumeric."
+  }
+}
+
 variable "datadog_api_key" {
   description = "Datadog API key the expiring-reservations Function uses to post events. Required (non-null) when enable_expiring_reservations_monitor is true."
   type        = string

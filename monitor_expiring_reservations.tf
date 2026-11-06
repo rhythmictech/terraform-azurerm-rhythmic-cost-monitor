@@ -15,6 +15,13 @@
 locals {
   expiring_reservations_enabled = var.enable_expiring_reservations_monitor ? 1 : 0
 
+  # The Function App name is a global DNS label; the service plan name is not,
+  # so only the Function takes the override.
+  expiring_reservations_function_name = coalesce(
+    var.expiring_reservations_function_name,
+    "${var.name_prefix}expiring-reservations",
+  )
+
   # Storage account names must be 3-24 chars, lowercase alphanumerics only, and
   # globally unique. Seed from name_prefix + a fixed infix + the subscription
   # guid, strip non-alphanumerics, then clamp to 24 chars.
@@ -85,7 +92,7 @@ data "archive_file" "function" {
 resource "azurerm_linux_function_app" "expiring_reservations" {
   count = local.expiring_reservations_enabled
 
-  name                = "${var.name_prefix}expiring-reservations"
+  name                = local.expiring_reservations_function_name
   resource_group_name = var.resource_group_name
   location            = var.location
   service_plan_id     = azurerm_service_plan.expiring_reservations[0].id
