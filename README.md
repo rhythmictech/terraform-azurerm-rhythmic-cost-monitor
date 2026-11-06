@@ -118,9 +118,12 @@ impact threshold and no frequency setting; Azure's detector self-tunes.
 
 ## Expiring reservations Function
 
-The Function runs with a system-assigned managed identity. Reservation and
-savings-plan visibility additionally requires the **Reservations Reader** role
-(`Microsoft.Capacity`) at **tenant scope**, granted to the Function's identity
+The Function runs as a user-assigned managed identity, `id-<name_prefix>cost-monitor`,
+which the module creates unless `user_assigned_identity` supplies one. The identity
+outlives the Function App, so a rename or replace of the app does not invalidate the
+grant below; its principal id is the `cost_monitor_identity_principal_id` output.
+Reservation and savings-plan visibility additionally requires the **Reservations
+Reader** role (`Microsoft.Capacity`) at **tenant scope**, granted to that identity
 out of band by a billing or tenant admin. The Terraform identity cannot assign a
 tenant-scope role, so this grant is an onboarding step, not a module-owned
 resource (the same pattern as the directory-role bootstrap elsewhere in the
@@ -200,6 +203,7 @@ The following are intentionally not implemented in this version:
 | [azurerm_storage_container.exports](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_container) | resource |
 | [azurerm_storage_management_policy.exports](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_management_policy) | resource |
 | [azurerm_subscription_cost_management_export.exports](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subscription_cost_management_export) | resource |
+| [azurerm_user_assigned_identity.cost_monitor](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/user_assigned_identity) | resource |
 | [archive_file.function](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) | data source |
 | [azurerm_subscription.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/subscription) | data source |
 
@@ -229,6 +233,7 @@ The following are intentionally not implemented in this version:
 | <a name="input_storage_capacity_alert_sensitivity"></a> [storage\_capacity\_alert\_sensitivity](#input\_storage\_capacity\_alert\_sensitivity) | Dynamic-threshold sensitivity for the storage capacity anomaly alerts: Low, Medium, or High. | `string` | `"Medium"` | no |
 | <a name="input_storage_capacity_monitored_account_ids"></a> [storage\_capacity\_monitored\_account\_ids](#input\_storage\_capacity\_monitored\_account\_ids) | Storage account resource IDs to watch for anomalous capacity growth or loss, keyed by a short label used in the alert name. | `map(string)` | `{}` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | User-defined tags merged onto all taggable resources. | `map(string)` | `{}` | no |
+| <a name="input_user_assigned_identity"></a> [user\_assigned\_identity](#input\_user\_assigned\_identity) | Existing user-assigned managed identity for the expiring-reservations Function (its resource id and client id). Null, the default, makes the module create one named id-<name\_prefix>cost-monitor. Either way the Function runs as a user-assigned identity so the tenant-scope Reservations Reader grant survives the Function App being recreated. | <pre>object({<br/>    id        = string<br/>    client_id = string<br/>  })</pre> | `null` | no |
 
 ## Outputs
 
@@ -236,6 +241,8 @@ The following are intentionally not implemented in this version:
 | ---- | ----------- |
 | <a name="output_anomaly_alert_id"></a> [anomaly\_alert\_id](#output\_anomaly\_alert\_id) | Resource ID of the subscription cost anomaly alert. |
 | <a name="output_budget_ids"></a> [budget\_ids](#output\_budget\_ids) | Map of service\_budgets key to the resource ID of its subscription budget. |
+| <a name="output_cost_monitor_identity_id"></a> [cost\_monitor\_identity\_id](#output\_cost\_monitor\_identity\_id) | Resource ID of the user-assigned identity the expiring-reservations Function runs as (the module's own or the one supplied), or null when the monitor is disabled. |
+| <a name="output_cost_monitor_identity_principal_id"></a> [cost\_monitor\_identity\_principal\_id](#output\_cost\_monitor\_identity\_principal\_id) | Principal ID of the user-assigned identity the module created for the Function, the target of the tenant-scope Reservations Reader grant. Null when the monitor is disabled or the caller supplied an identity. |
 | <a name="output_export_storage_account_id"></a> [export\_storage\_account\_id](#output\_export\_storage\_account\_id) | Resource ID of the cost-export storage account, or null when exports are disabled. |
 | <a name="output_function_app_id"></a> [function\_app\_id](#output\_function\_app\_id) | Resource ID of the expiring-reservations Function app, or null when the monitor is disabled. |
 | <a name="output_storage_capacity_alert_ids"></a> [storage\_capacity\_alert\_ids](#output\_storage\_capacity\_alert\_ids) | Map of monitored-account label to the resource ID of its storage capacity metric alert. |
