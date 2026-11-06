@@ -89,3 +89,21 @@ run "bad_sensitivity_rejected" {
     var.storage_capacity_alert_sensitivity,
   ]
 }
+
+# A Function App name that is not a DNS label is rejected by the variable
+# validation, not by the provider at apply time.
+run "bad_function_name_rejected" {
+  command = plan
+
+  variables {
+    action_group_id                     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rhythmic-monitoring/providers/microsoft.insights/actionGroups/rhythmic-costalerts"
+    resource_group_name                 = "rhythmic-monitoring"
+    location                            = "eastus"
+    billing_period_start_date           = "2026-08-01T00:00:00Z"
+    anomaly_notification_emails         = ["anomaly@example.com"]
+    datadog_api_key                     = "example-key"
+    expiring_reservations_function_name = "Bad_Name"
+  }
+
+  expect_failures = [var.expiring_reservations_function_name]
+}
