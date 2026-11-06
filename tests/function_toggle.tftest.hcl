@@ -3,7 +3,7 @@ mock_provider "azurerm" {
 }
 
 # Default (enabled): the Function, its Linux consumption service plan, and its
-# backing storage account are all present, with a system-assigned identity,
+# backing storage account are all present, with a user-assigned identity,
 # Python stack, and the timer/Datadog environment app settings wired.
 run "monitor_enabled_by_default" {
   command = plan
@@ -43,8 +43,23 @@ run "monitor_enabled_by_default" {
   }
 
   assert {
-    condition     = one(azurerm_linux_function_app.expiring_reservations[0].identity).type == "SystemAssigned"
-    error_message = "the Function app should use a system-assigned managed identity"
+    condition     = one(azurerm_linux_function_app.expiring_reservations[0].identity).type == "UserAssigned"
+    error_message = "the Function app should run as a user-assigned managed identity"
+  }
+
+  assert {
+    condition     = length(azurerm_user_assigned_identity.cost_monitor) == 1
+    error_message = "the module should create the cost-monitor identity when none is supplied"
+  }
+
+  assert {
+    condition     = azurerm_user_assigned_identity.cost_monitor[0].name == "id-rhythmic-cost-monitor"
+    error_message = "the created identity should be named id-<name_prefix>cost-monitor"
+  }
+
+  assert {
+    condition     = length(one(azurerm_linux_function_app.expiring_reservations[0].identity).identity_ids) == 1
+    error_message = "the Function app should reference exactly one user-assigned identity"
   }
 
   assert {
@@ -100,6 +115,40 @@ run "function_name_override" {
   }
 }
 
+# A caller-supplied identity is used as is: nothing is created and the Function
+# is told which identity to use through AZURE_CLIENT_ID.
+run "supplied_identity" {
+  command = plan
+
+  variables {
+    action_group_id             = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rhythmic-monitoring/providers/microsoft.insights/actionGroups/rhythmic-costalerts"
+    resource_group_name         = "rhythmic-monitoring"
+    location                    = "eastus"
+    billing_period_start_date   = "2026-08-01T00:00:00Z"
+    anomaly_notification_emails = ["anomaly@example.com"]
+    datadog_api_key             = "example-key"
+    user_assigned_identity = {
+      id        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rhythmic-monitoring/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-example"
+      client_id = "11111111-1111-1111-1111-111111111111"
+    }
+  }
+
+  assert {
+    condition     = length(azurerm_user_assigned_identity.cost_monitor) == 0
+    error_message = "no identity should be created when one is supplied"
+  }
+
+  assert {
+    condition     = contains(one(azurerm_linux_function_app.expiring_reservations[0].identity).identity_ids, "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rhythmic-monitoring/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-example")
+    error_message = "the Function app should reference the supplied identity"
+  }
+
+  assert {
+    condition     = azurerm_linux_function_app.expiring_reservations[0].app_settings["AZURE_CLIENT_ID"] == "11111111-1111-1111-1111-111111111111"
+    error_message = "AZURE_CLIENT_ID should carry the supplied identity's client id"
+  }
+}
+
 run "monitor_disabled" {
   command = plan
 
@@ -127,6 +176,11 @@ run "monitor_disabled" {
   assert {
     condition     = length(azurerm_storage_account.function) == 0
     error_message = "the Function backing storage account should not be created when the monitor is disabled"
+  }
+
+  assert {
+    condition     = length(azurerm_user_assigned_identity.cost_monitor) == 0
+    error_message = "no identity should be created when the monitor is disabled"
   }
 }
 

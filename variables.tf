@@ -102,6 +102,15 @@ variable "expiring_reservations_function_name" {
   }
 }
 
+variable "user_assigned_identity" {
+  description = "Existing user-assigned managed identity for the expiring-reservations Function (its resource id and client id). Null, the default, makes the module create one named id-<name_prefix>cost-monitor. Either way the Function runs as a user-assigned identity so the tenant-scope Reservations Reader grant survives the Function App being recreated."
+  type = object({
+    id        = string
+    client_id = string
+  })
+  default = null
+}
+
 variable "datadog_api_key" {
   description = "Datadog API key the expiring-reservations Function uses to post events. Required (non-null) when enable_expiring_reservations_monitor is true."
   type        = string

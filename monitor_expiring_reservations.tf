@@ -22,6 +22,15 @@ locals {
     "${var.name_prefix}expiring-reservations",
   )
 
+  # One identity per trust boundary: the Function holds read-only, tenant-scope
+  # rights that a tenant admin grants out of band, so it gets its own
+  # user-assigned identity rather than sharing the automation identity. Created
+  # here unless the caller brings one.
+  cost_monitor_identity_created = local.expiring_reservations_enabled == 1 && var.user_assigned_identity == null ? 1 : 0
+
+  expiring_reservations_identity_id        = var.user_assigned_identity != null ? var.user_assigned_identity.id : one(azurerm_user_assigned_identity.cost_monitor[*].id)
+  expiring_reservations_identity_client_id = var.user_assigned_identity != null ? var.user_assigned_identity.client_id : one(azurerm_user_assigned_identity.cost_monitor[*].client_id)
+
   # Storage account names must be 3-24 chars, lowercase alphanumerics only, and
   # globally unique. Seed from name_prefix + a fixed infix + the subscription
   # guid, strip non-alphanumerics, then clamp to 24 chars.
@@ -66,6 +75,18 @@ resource "azurerm_storage_account" "function" {
   tags                              = local.tags
 }
 
+# The Function's identity. User-assigned so it outlives the Function App: the
+# Reservations Reader grant a tenant admin makes against its principal survives
+# a rename or a replace of the app.
+resource "azurerm_user_assigned_identity" "cost_monitor" {
+  count = local.cost_monitor_identity_created
+
+  name                = "id-${var.name_prefix}cost-monitor"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  tags                = local.tags
+}
+
 # Linux consumption plan (Y1). Consumption keeps the daily timer job effectively
 # free, matching the AWS Lambda's cost profile.
 resource "azurerm_service_plan" "expiring_reservations" {
@@ -103,10 +124,12 @@ resource "azurerm_linux_function_app" "expiring_reservations" {
 
   tags = local.tags
 
-  # System-assigned identity: DefaultAzureCredential in the Function picks this
-  # up; the tenant-scope Reservations Reader grant is bootstrapped out of band.
+  # DefaultAzureCredential in the Function finds a user-assigned identity only
+  # through AZURE_CLIENT_ID (set in app_settings below); the tenant-scope
+  # Reservations Reader grant against this identity is bootstrapped out of band.
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [local.expiring_reservations_identity_id]
   }
 
   site_config {
@@ -120,6 +143,9 @@ resource "azurerm_linux_function_app" "expiring_reservations" {
     # and alert windows are passed as environment variables the Function reads.
     WARNING_EXP = tostring(var.expiring_reservations_warning_days)
     ALERT_EXP   = tostring(var.expiring_reservations_alert_days)
+
+    # Which managed identity DefaultAzureCredential should use.
+    AZURE_CLIENT_ID = local.expiring_reservations_identity_client_id
 
     # Datadog Events API credentials the Function posts with.
     DD_API_KEY = var.datadog_api_key
